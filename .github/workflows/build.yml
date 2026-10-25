@@ -1,0 +1,57 @@
+# Builds Unscroll.apk in the cloud and puts it on this repository's Releases page,
+# so you can download and install it straight from your phone.
+#
+# Works whether the project files are at the top of the repo, or you just uploaded
+# Unscroll.zip (it gets unpacked automatically).
+
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find the project (unpack the zip if that's what was uploaded)
+        run: |
+          if [ -f settings.gradle ]; then
+            echo "PROJECT_DIR=." >> "$GITHUB_ENV"
+          else
+            zipfile=$(ls *.zip 2>/dev/null | head -1)
+            if [ -z "$zipfile" ]; then
+              echo "::error::No project found. Upload Unscroll.zip to the top of the repository."
+              exit 1
+            fi
+            unzip -q -o "$zipfile" -d unpacked
+            dir=$(dirname "$(find unpacked -name settings.gradle | head -1)")
+            echo "PROJECT_DIR=$dir" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build the app
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/Unscroll.apk"
+
+      - name: Put Unscroll.apk on the Releases page
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Unscroll (build ${{ github.run_number }})
+          body: Download Unscroll.apk below on your Android phone and open it to install.
+          files: Unscroll.apk
